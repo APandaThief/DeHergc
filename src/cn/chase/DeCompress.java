@@ -9,6 +9,7 @@ public class DeCompress {
     private static int vec_size = 1 << 20;
     private static int MAX_CHAR_NUM = 1 << 26;
 
+    private static String identifier;
     private static int diff_pos_loc_len;
     private static int diff_low_vec_len;
     private static int N_vec_len;
@@ -16,8 +17,10 @@ public class DeCompress {
 
     private static char[] ref_seq_code = new char[MAX_CHAR_NUM];
     private static char[] tar_seq_code = new char[MAX_CHAR_NUM];
+    private static char[] result_seq_code = new char[MAX_CHAR_NUM];
     private static int ref_seq_len = 0;
     private static int tar_seq_len = 0;
+    private static int result_seq_len = 0;
     private static int ref_low_vec_len = 0;
     private static int line_break_len = 0;
     private static int diff_low_loc_len = 0;
@@ -37,8 +40,8 @@ public class DeCompress {
     private static int[] tar_low_vec_begin = new int[vec_size];
     private static int[] tar_low_vec_length = new int[vec_size];
     private static int[] diff_low_loc = new int[vec_size];
-
     public static BufferedInputStream bis = null;
+    public static BufferedOutputStream bos = null;
 
     public static char readIndex(int num) {
         switch (num) {
@@ -47,6 +50,38 @@ public class DeCompress {
             case 2: return 'G';
             case 3: return 'T';
             default : return 'Y';
+        }
+    }
+
+    public static int binaryDecoding(Stream stream) {
+        int type = bitFileGetBit(stream);
+        int num;
+
+        if (type == -1) {
+            return -1;
+        } else if (type == 1) {	//1     (2 <= num < 262146)
+            if ((num = bitFileGetBitsInt(stream, 18)) == -1) {
+                return -1;
+            } else {
+                return (num + 2);
+            }
+        } else {
+            type = bitFileGetBit(stream);
+            if (type == -1) {
+                return -1;
+            }else if (type == 1) {	//01    (num < 2)
+                if ((num = bitFileGetBit(stream)) == -1) {
+                    return -1;
+                } else {
+                    return num;
+                }
+            } else {	//00    (num >= 262146)
+                if ((num = bitFileGetBitsInt(stream, 28)) == -1) {
+                    return -1;
+                } else {
+                    return (num + 262146);
+                }
+            }
         }
     }
 
@@ -107,58 +142,51 @@ public class DeCompress {
         }
     }
 
-    public static int binaryDecoding(Stream stream) {
-        int type = bitFileGetBit(stream);
-        int num;
-
-        if (type == -1) {
-            return -1;
-        } else if (type == 1) {	//1     (2 <= num < 262146)
-            if ((num = bitFileGetBitsInt(stream, 18)) == -1) {
-                return -1;
-            } else {
-                return (num + 2);
+    public static void readTarPosVec() {
+        //由diff_pos_loc得到diff_low_loc
+        for (int i = 0; i < diff_pos_loc_len; i ++) {
+            int start = diff_pos_loc_begin[i];
+            int num = diff_pos_loc_length[i];
+            diff_low_loc[diff_low_loc_len ++] = (start ++);
+            for (int j = 1; j < num; j ++) {
+                diff_low_loc[diff_low_loc_len ++] = (start ++);
             }
-        } else {
-            type = bitFileGetBit(stream);
-            if (type == -1) {
-                return -1;
-            }else if (type == 1) {	//01    (num < 2)
-                if ((num = bitFileGetBit(stream)) == -1) {
-                    return -1;
-                } else {
-                    return num;
-                }
-            } else {	//00    (num >= 262146)
-                if ((num = bitFileGetBitsInt(stream, 28)) == -1) {
-                    return -1;
-                } else {
-                    return (num + 262146);
-                }
+        }
+
+        //由diff_low_loc和diff_low_vec得到tar_low_vec
+        int num = 0;
+        tar_low_vec_begin[tar_low_vec_len] = ref_low_vec_begin[diff_low_loc[0]];
+        tar_low_vec_length[tar_low_vec_len ++] = ref_low_vec_length[diff_low_loc[0]];
+        for (int i = 1; i < diff_low_loc_len; i ++) {
+            if (diff_low_loc[i] != 0) {
+                tar_low_vec_begin[tar_low_vec_len] = ref_low_vec_begin[diff_low_loc[i]];
+                tar_low_vec_length[tar_low_vec_len ++] = ref_low_vec_length[diff_low_loc[i]];
+            } else {
+                tar_low_vec_begin[tar_low_vec_len] = diff_low_vec_begin[num];
+                tar_low_vec_length[tar_low_vec_len ++] = diff_low_vec_length[num ++];
             }
         }
     }
 
     public static void readOtherInfo(Stream stream) {
-        //读取metadata
-        int temp1;
-        String str = "";
+        //读取identifier
         int identifierLength = binaryDecoding(stream);
-//        System.out.println(identifierLength);
+        char[] metadata = new char[identifierLength];
         for (int i = 0; i < identifierLength; i ++) {
-            temp1 = bitFileGetChar(stream);  //temp是metadata数据对应ASCII码
-//            System.out.println(temp1);
+            metadata[i] = (char)bitFileGetChar(stream);  //temp是metadata数据对应ASCII码
         }
+        identifier = String.valueOf(metadata);
+        System.out.println(identifier);
 
         //还原line_break_vec和line_break_len
-        int temp2;
-        int temp22;
+        int temp;
+        int temp_len;
         int code_len = binaryDecoding(stream);
         for (int i = 0; i < code_len; i ++) {
-            temp2 = binaryDecoding(stream);
-            temp22 = binaryDecoding(stream);
-            for (int j = 0; j < temp22; j ++) {
-                line_break_vec[line_break_len ++] = temp2;
+            temp = binaryDecoding(stream);
+            temp_len = binaryDecoding(stream);
+            for (int j = 0; j < temp_len; j ++) {
+                line_break_vec[line_break_len ++] = temp;
             }
         }
 //        System.out.println(line_break_len);
@@ -178,6 +206,9 @@ public class DeCompress {
             diff_low_vec_begin[i] = binaryDecoding(stream);
             diff_low_vec_length[i] = binaryDecoding(stream);
         }
+
+        //还原tar_low_vec
+        readTarPosVec();
 
         //还原N_vec
         N_vec_len = binaryDecoding(stream);
@@ -243,34 +274,83 @@ public class DeCompress {
         }
     }
 
-    public static void readTarPosVec() {
-        //由diff_pos_loc得到diff_low_loc
-        for (int i = 0; i < diff_pos_loc_len; i ++) {
-            int start = diff_pos_loc_begin[i];
-            int num = diff_pos_loc_length[i];
-            diff_low_loc[diff_low_loc_len ++] = (start ++);
-            for (int j = 1; j < num; j ++) {
-                diff_low_loc[diff_low_loc_len ++] = (start ++);
-            }
-        }
-
-        //由diff_low_loc和diff_low_vec得到tar_low_vec
-        int num = 0;
-        tar_low_vec_begin[tar_low_vec_len] = ref_low_vec_begin[diff_low_loc[0]];
-        tar_low_vec_length[tar_low_vec_len ++] = ref_low_vec_length[diff_low_loc[0]];
-        for (int i = 1; i < diff_low_loc_len; i ++) {
-            if (diff_low_loc[i] != 0) {
-                tar_low_vec_begin[tar_low_vec_len] = ref_low_vec_begin[diff_low_loc[i]];
-                tar_low_vec_length[tar_low_vec_len ++] = ref_low_vec_length[diff_low_loc[i]];
-            } else {
-                tar_low_vec_begin[tar_low_vec_len] = diff_low_vec_begin[num];
-                tar_low_vec_length[tar_low_vec_len ++] = diff_low_vec_length[num ++];
-            }
-        }
-    }
-
     public static void saveDecompressedData(File tarFile) {
+        String newLine = System.getProperty("line.separator");
+        char[] temp_seq = new char[MAX_CHAR_NUM];
 
+        //写入头文件
+        try {
+            bos.write(identifier.getBytes());
+            bos.write(newLine.getBytes());
+            bos.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        temp_seq = tar_seq_code;
+
+        //写入other_character
+        int tt = 0, n = 0;
+        for (int i = 1; i < other_char_len; i++) {
+            other_char_vec_pos[i] += other_char_vec_pos[i - 1];
+        }
+        for (int m = 0; m < other_char_len; m++) {
+            while (tt < other_char_vec_pos[m] && tt < tar_seq_len) {
+                tar_seq_code[n ++] = temp_seq[tt++];
+            }
+            tar_seq_code[n ++] = other_char_vec_ch[m];
+        }
+        while (tt < tar_seq_len) {
+            tar_seq_code[n ++] = temp_seq[tt++];
+        }
+        tar_seq_len = n;
+
+        //将N字符放入目标数组
+        int str_len = 0, r = 0;
+        char[] str = new char[MAX_CHAR_NUM];
+        for (int i = 0; i < N_vec_len; i ++) {
+            for (int j = 0; j < N_vec_begin[i]; j ++) {
+                str[str_len ++] = tar_seq_code[r ++];
+            }
+            for (int j = 0; j < N_vec_length[i]; j ++) {
+                str[str_len ++] = 'N';
+            }
+        }
+        while (r < tar_seq_len) {
+            str[str_len ++] = tar_seq_code[r ++];
+        }
+
+        //恢复小写，包括A C G T N X
+        int k = 0;
+        for (int i = 0; i < tar_low_vec_len; i ++) {
+            k += tar_low_vec_begin[i];
+            int temp = tar_low_vec_length[i];
+            for (int j = 0; j < temp; j ++) {
+                str[k] = Character.toLowerCase(str[k]);
+                k ++;
+            }
+        }
+
+        //恢复换行
+        int k_lb = 0;
+        int temp_seq_len = 0;
+        for (int i = 1; i < line_break_len; i ++) {
+            line_break_vec[i] += line_break_vec[i - 1];
+        }
+        for (int i = 0; i < str_len; i ++) {
+            if(i == line_break_vec[k_lb]) {
+                temp_seq[temp_seq_len ++] = '\n';
+                k_lb++;
+            }
+            temp_seq[temp_seq_len ++] = str[i];
+        }
+
+        String s = String.valueOf(temp_seq, 0, temp_seq_len);
+        try {
+            bos.write(s.getBytes());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static void deCompressFile(File refFile, Stream stream, File resultFile) {
@@ -280,21 +360,32 @@ public class DeCompress {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        readTarPosVec();
         saveDecompressedData(resultFile);
     }
 
     public static void main(String[] args) {
         File refFile = new File("C:/Users/chase/OneDrive/GeneFiles/hg17_chr21.fa");
-        File resultFile1 = new File("C:/Users/chase/OneDrive/GeneFiles/result.txt");   //压缩文件
-        File resultFile2 = new File("E:/result2.txt");  //解压缩文件
-        Stream stream = new Stream(resultFile1, 0, 0);
-        BufferedOutputStream bos = null;
+        File compressedFile = new File("C:/Users/chase/OneDrive/GeneFiles/result.txt");   //压缩文件
+        File resultFile = new File("E:/result2.txt");  //解压缩文件
+        Stream stream = new Stream(compressedFile, 0, 0);
         try {
             bis = new BufferedInputStream(new FileInputStream(stream.getFile()));
-            deCompressFile(refFile, stream, resultFile2);
+            bos = new BufferedOutputStream(new FileOutputStream(resultFile, true));
+
+            deCompressFile(refFile, stream, resultFile);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
+        } finally {
+            try {
+                if (bis != null) {
+                    bis.close();
+                }
+                if (bos != null) {
+                    bos.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 }
