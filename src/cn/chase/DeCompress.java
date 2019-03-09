@@ -6,7 +6,7 @@ import static cn.chase.BitFile.*;
 
 public class DeCompress {
     private static int min_rep_len = 11;
-    private static int min_size = 1 << 20;
+    private static int vec_size = 1 << 20;
     private static int MAX_CHAR_NUM = 1 << 26;
 
     private static int diff_pos_loc_len;
@@ -18,20 +18,25 @@ public class DeCompress {
     private static char[] tar_seq_code = new char[MAX_CHAR_NUM];
     private static int ref_seq_len = 0;
     private static int tar_seq_len = 0;
-    private static int ref_pos_vec_len = 0;
+    private static int ref_low_vec_len = 0;
     private static int line_break_len = 0;
-    private static int[] ref_pos_vec_begin = new int[min_size];
-    private static int[] ref_pos_vec_length = new int[min_size];
+    private static int diff_low_loc_len = 0;
+    private static int tar_low_vec_len = 0;
+    private static int[] ref_low_vec_begin = new int[vec_size];
+    private static int[] ref_low_vec_length = new int[vec_size];
     private static int[] line_break_vec = new int[1 << 25];
-    private static int[] diff_pos_loc_begin = new int[min_size];
-    private static int[] diff_pos_loc_length = new int[min_size];
-    private static int[] diff_low_vec_begin = new int[min_size];
-    private static int[] diff_low_vec_length = new int[min_size];
-    private static int[] N_vec_begin = new int[min_size];
-    private static int[] N_vec_length = new int[min_size];
-    private static int[] other_char_vec_pos = new int[min_size];
-    private static char[] other_char_vec_ch = new char[min_size];
-    private static char[] dismatched_str = new char[min_size];
+    private static int[] diff_pos_loc_begin = new int[vec_size];
+    private static int[] diff_pos_loc_length = new int[vec_size];
+    private static int[] diff_low_vec_begin = new int[vec_size];
+    private static int[] diff_low_vec_length = new int[vec_size];
+    private static int[] N_vec_begin = new int[vec_size];
+    private static int[] N_vec_length = new int[vec_size];
+    private static int[] other_char_vec_pos = new int[vec_size];
+    private static char[] other_char_vec_ch = new char[vec_size];
+    private static char[] dismatched_str = new char[vec_size];
+    private static int[] tar_low_vec_begin = new int[vec_size];
+    private static int[] tar_low_vec_length = new int[vec_size];
+    private static int[] diff_low_loc = new int[vec_size];
 
     public static BufferedInputStream bis = null;
 
@@ -66,13 +71,13 @@ public class DeCompress {
 
                         if (flag) {
                             flag = false;
-                            ref_pos_vec_begin[ref_pos_vec_len] = letters_len;
+                            ref_low_vec_begin[ref_low_vec_len] = letters_len;
                             letters_len = 0;
                         }
                     } else {
                         if (!flag) {
                             flag = true;
-                            ref_pos_vec_length[ref_pos_vec_len ++] = letters_len;
+                            ref_low_vec_length[ref_low_vec_len++] = letters_len;
                             letters_len = 0;
                         }
                     }
@@ -85,7 +90,7 @@ public class DeCompress {
             }
 
             if (!flag) {
-                ref_pos_vec_length[ref_pos_vec_len ++] = letters_len;
+                ref_low_vec_length[ref_low_vec_len++] = letters_len;
             }
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -238,6 +243,32 @@ public class DeCompress {
         }
     }
 
+    public static void readTarPosVec() {
+        //由diff_pos_loc得到diff_low_loc
+        for (int i = 0; i < diff_pos_loc_len; i ++) {
+            int start = diff_pos_loc_begin[i];
+            int num = diff_pos_loc_length[i];
+            diff_low_loc[diff_low_loc_len ++] = (start ++);
+            for (int j = 1; j < num; j ++) {
+                diff_low_loc[diff_low_loc_len ++] = (start ++);
+            }
+        }
+
+        //由diff_low_loc和diff_low_vec得到tar_low_vec
+        int num = 0;
+        tar_low_vec_begin[tar_low_vec_len] = ref_low_vec_begin[diff_low_loc[0]];
+        tar_low_vec_length[tar_low_vec_len ++] = ref_low_vec_length[diff_low_loc[0]];
+        for (int i = 1; i < diff_low_loc_len; i ++) {
+            if (diff_low_loc[i] != 0) {
+                tar_low_vec_begin[tar_low_vec_len] = ref_low_vec_begin[diff_low_loc[i]];
+                tar_low_vec_length[tar_low_vec_len ++] = ref_low_vec_length[diff_low_loc[i]];
+            } else {
+                tar_low_vec_begin[tar_low_vec_len] = diff_low_vec_begin[num];
+                tar_low_vec_length[tar_low_vec_len ++] = diff_low_vec_length[num ++];
+            }
+        }
+    }
+
     public static void saveDecompressedData(File tarFile) {
 
     }
@@ -249,27 +280,20 @@ public class DeCompress {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        readTarPosVec();
         saveDecompressedData(resultFile);
     }
 
     public static void main(String[] args) {
         File refFile = new File("C:/Users/chase/OneDrive/GeneFiles/hg17_chr21.fa");
-        File resultFile1 = new File("E:/result.txt");   //压缩文件
+        File resultFile1 = new File("C:/Users/chase/OneDrive/GeneFiles/result.txt");   //压缩文件
         File resultFile2 = new File("E:/result2.txt");  //解压缩文件
         Stream stream = new Stream(resultFile1, 0, 0);
         BufferedOutputStream bos = null;
         try {
             bis = new BufferedInputStream(new FileInputStream(stream.getFile()));
-            bos = new BufferedOutputStream(new FileOutputStream(new File("E:/bbbResult.txt"), true));
             deCompressFile(refFile, stream, resultFile2);
-            for (int m = 0; m < tar_seq_len; m ++) {
-                bos.write(tar_seq_code[m]);
-                bos.flush();
-            }
         } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
-        catch (IOException e) {
             e.printStackTrace();
         }
     }
