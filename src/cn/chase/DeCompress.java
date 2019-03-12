@@ -7,7 +7,7 @@ import static cn.chase.BitFile.*;
 public class DeCompress {
     private static int min_rep_len = 11;
     private static int vec_size = 1 << 20;
-    private static int MAX_CHAR_NUM = 1 << 26;
+    private static int MAX_CHAR_NUM = 1 << 28;
 
     private static String identifier;
     private static int diff_pos_loc_len;
@@ -17,10 +17,8 @@ public class DeCompress {
 
     private static char[] ref_seq_code = new char[MAX_CHAR_NUM];
     private static char[] tar_seq_code = new char[MAX_CHAR_NUM];
-    private static char[] result_seq_code = new char[MAX_CHAR_NUM];
     private static int ref_seq_len = 0;
     private static int tar_seq_len = 0;
-    private static int result_seq_len = 0;
     private static int ref_low_vec_len = 0;
     private static int line_break_len = 0;
     private static int diff_low_loc_len = 0;
@@ -36,7 +34,6 @@ public class DeCompress {
     private static int[] N_vec_length = new int[vec_size];
     private static int[] other_char_vec_pos = new int[vec_size];
     private static char[] other_char_vec_ch = new char[vec_size];
-    private static char[] dismatched_str = new char[vec_size];
     private static int[] tar_low_vec_begin = new int[vec_size];
     private static int[] tar_low_vec_length = new int[vec_size];
     private static int[] diff_low_loc = new int[vec_size];
@@ -176,7 +173,6 @@ public class DeCompress {
             metadata[i] = (char)bitFileGetChar(stream);  //temp是metadata数据对应ASCII码
         }
         identifier = String.valueOf(metadata);
-        System.out.println(identifier);
 
         //还原line_break_vec和line_break_len
         int temp;
@@ -189,7 +185,6 @@ public class DeCompress {
                 line_break_vec[line_break_len ++] = temp;
             }
         }
-//        System.out.println(line_break_len);
 
         //还原diff_pos_loc
         diff_pos_loc_len = binaryDecoding(stream);
@@ -201,7 +196,6 @@ public class DeCompress {
 
         //还原diff_low_vec
         diff_low_vec_len = binaryDecoding(stream);
-//        System.out.println(diff_low_vec_len);
         for (int i = 0; i < diff_low_vec_len; i ++) {
             diff_low_vec_begin[i] = binaryDecoding(stream);
             diff_low_vec_length[i] = binaryDecoding(stream);
@@ -212,17 +206,13 @@ public class DeCompress {
 
         //还原N_vec
         N_vec_len = binaryDecoding(stream);
-//        System.out.println(N_vec_len);
         for (int i = 0; i < N_vec_len; i ++) {
             N_vec_begin[i] = binaryDecoding(stream);
             N_vec_length[i] = binaryDecoding(stream);
-//            System.out.println(N_vec_begin[i]);
-//            System.out.println(N_vec_length[i]);
         }
 
         //还原other_char
         other_char_len = binaryDecoding(stream);
-//        System.out.println(other_char_len);
         if (other_char_len > 0) {
             for(int i = 0; i < other_char_len; i ++){
                 other_char_vec_pos[i] = binaryDecoding(stream);
@@ -240,8 +230,7 @@ public class DeCompress {
             misLen = temp_len;
             if (misLen > 0) {
                 for(int i = 0; i < misLen; i ++) {
-                    int num;
-                    num = bitFileGetBitsInt(stream, 2);
+                    int num = bitFileGetBitsInt(stream, 2);
                     if (num != -1) {
                         tar_seq_code[tar_seq_len ++] = readIndex(num);
                     } else {
@@ -275,13 +264,12 @@ public class DeCompress {
     }
 
     public static void saveDecompressedData(File tarFile) {
-        String newLine = System.getProperty("line.separator");
         char[] temp_seq = new char[MAX_CHAR_NUM];
 
         //写入头文件
         try {
             bos.write(identifier.getBytes());
-            bos.write(newLine.getBytes());
+            bos.write('\n');
             bos.flush();
         } catch (IOException e) {
             e.printStackTrace();
@@ -364,8 +352,8 @@ public class DeCompress {
     }
 
     public static void main(String[] args) {
-        File refFile = new File("C:/Users/chase/OneDrive/GeneFiles/hg17_chr21.fa");
-        File compressedFile = new File("C:/Users/chase/OneDrive/GeneFiles/result.txt");   //压缩文件
+        File refFile = new File("C:/Users/chase/OneDrive/GeneFiles/hg17_chr1.fa");
+        File compressedFile = new File("E:/result.txt");   //压缩文件
         File resultFile = new File("E:/result2.txt");  //解压缩文件
         Stream stream = new Stream(compressedFile, 0, 0);
         try {
